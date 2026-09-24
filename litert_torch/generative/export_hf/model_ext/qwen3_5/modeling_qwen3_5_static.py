@@ -670,6 +670,29 @@ class Qwen3_5StaticRotaryEmbedding(nn.Module):
         ** (torch.arange(0, dim, 2, dtype=torch.float32, device=device) / dim)
     )
     self.register_buffer("inv_freq", inv_freq, persistent=False)
+    self.mrope_section = rope_params.get("mrope_section")
+
+  def forward_mrope(
+      self, x: torch.Tensor, mrope_positions: torch.Tensor
+  ) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Interleaved multimodal RoPE from (t, h, w) positions [3, B, T].
+
+    Frequency i uses the h position if i % 3 == 1 and i < 3 * section_h, the
+    w position if i % 3 == 2 and i < 3 * section_w, and the t position
+    otherwise (as HF Qwen3.5's recomposition_frequencies), expressed with
+    elementwise selects instead of slice assignments.
+    """
+    if not self.mrope_section:
+      raise ValueError("mrope_section is required for multimodal RoPE.")
+    freqs = mrope_positions.float().unsqueeze(-1) * self.inv_freq
+    idx = torch.arange(freqs.shape[-1], device=freqs.device)
+    use_h = (idx % 3 == 1) & (idx < 3 * self.mrope_section[1])
+    use_w = (idx % 3 == 2) & (idx < 3 * self.mrope_section[2])
+    freqs = torch.where(use_h, freqs[1], torch.where(use_w, freqs[2], freqs[0]))
+    emb = torch.cat((freqs, freqs), dim=-1)
+    cos = emb.cos() * self.attention_scaling
+    sin = emb.sin() * self.attention_scaling
+    return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
 
   def forward(
       self, x: torch.Tensor, position_ids: torch.Tensor
@@ -724,7 +747,14 @@ class Qwen3_5StaticModel(nn.Module):
       hidden_states = inputs_embeds
     else:
       hidden_states = self.embed_tokens(input_ids)
-    if positions is not None and positions.ndim == 1:
+    # Multimodal inputs pass (t, h, w) RoPE positions separately; `positions`
+    # then only indexes the caches and masks.
+    mrope_positions = kwargs.pop("mrope_positions", None)
+    if mrope_positions is not None:
+      position_embeddings = self.rotary_emb.forward_mrope(
+          hidden_states, mrope_positions
+      )
+    elif positions is not None and positions.ndim == 1:
       pos_for_rope = positions.view(1, 1, -1).expand(
           3, hidden_states.shape[0], -1
       )
@@ -732,7 +762,8 @@ class Qwen3_5StaticModel(nn.Module):
       pos_for_rope = positions.unsqueeze(0).expand(3, -1, -1)
     else:
       pos_for_rope = positions
-    position_embeddings = self.rotary_emb(hidden_states, pos_for_rope)
+    if mrope_positions is None:
+      position_embeddings = self.rotary_emb(hidden_states, pos_for_rope)
 
     for layer in self.layers:
       hidden_states = layer(

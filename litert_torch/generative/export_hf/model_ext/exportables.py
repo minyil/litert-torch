@@ -75,6 +75,17 @@ def get_prefill_decode_exportables(
       return None
   elif model_config.model_type in ('qwen3_5', 'qwen3_5_text'):
     print('Using Qwen3.5 exportables.')
+    if (
+        export_config.task == 'image_text_to_text'
+        and export_config.export_vision_encoder
+    ):
+      assert (
+          not export_config.split_cache
+      ), 'Split cache is not supported for multimodal Qwen3.5.'
+      return (
+          qwen3_5_exportable.LiteRTExportableModuleForQwen3_5VLPrefill,
+          qwen3_5_exportable.LiteRTExportableModuleForQwen3_5VLGenerate,
+      )
     if export_config.split_cache:
       return (
           qwen3_5_exportable.LiteRTSplitCacheExportableModuleForQwen3_5Prefill,
@@ -141,7 +152,7 @@ def get_vision_exportables(
         lfm2_vl_vision_exportable.LiteRTExportableModuleForLFM2VisionAdapter,
         None,
     )
-  elif model_config.model_type == 'qwen3_vl':
+  elif model_config.model_type in ('qwen3_vl', 'qwen3_5'):
     return (
         qwen3_vl_vision_exportable.LiteRTExportableModuleForQwen3VLVisionEncoder,
         None,

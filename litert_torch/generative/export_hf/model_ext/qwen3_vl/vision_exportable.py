@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Exportable module for the Qwen3-VL vision encoder.
+"""Exportable module for the Qwen3-VL / Qwen3.5 vision encoder.
 
 The HF vision tower takes dynamically sized, pre-patchified pixel values plus a
 `grid_thw` tensor. For LiteRT we export one signature per fixed image size
@@ -30,8 +30,9 @@ instead:
 
 Outputs, with N = (H / 32) * (W / 32) image tokens:
   * `features`: [1, N, text_hidden] merged image embeddings.
-  * `deepstack_features`: [1, N, num_deepstack, text_hidden], added to the
-    decoder hidden states after decoder layers 0..num_deepstack-1.
+  * `deepstack_features` (Qwen3-VL only): [1, N, num_deepstack, text_hidden],
+    added to the decoder hidden states after decoder layers
+    0..num_deepstack-1.
   * `mrope_offsets`: [1, N, 3] float (t, h, w) offsets of each image token
     relative to the image's first M-RoPE position.
 """
@@ -80,7 +81,10 @@ class LiteRTExportableModuleForQwen3VLVisionEncoder(
     self.patch_size = cfg.patch_size
     self.merge_size = cfg.spatial_merge_size
     self.num_heads = cfg.num_heads
-    self.deepstack_visual_indexes = list(cfg.deepstack_visual_indexes)
+    # Qwen3.5 has no DeepStack.
+    self.deepstack_visual_indexes = list(
+        getattr(cfg, 'deepstack_visual_indexes', None) or []
+    )
     # Qwen3-VL uses mean = std = 0.5 for every channel.
     self.image_mean = 0.5
     self.image_std = 0.5
@@ -195,11 +199,13 @@ class LiteRTExportableModuleForQwen3VLVisionEncoder(
         deepstack.append(merger(hidden_states))
 
     features = self.visual.merger(hidden_states)
-    return {
+    outputs = {
         'features': features.unsqueeze(0),
-        'deepstack_features': torch.stack(deepstack, dim=1).unsqueeze(0),
         'mrope_offsets': mrope_offsets,
     }
+    if deepstack:
+      outputs['deepstack_features'] = torch.stack(deepstack, dim=1).unsqueeze(0)
+    return outputs
 
   def get_sample_inputs(
       self, model_config, **kwargs

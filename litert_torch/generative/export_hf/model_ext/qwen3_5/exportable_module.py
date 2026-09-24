@@ -257,3 +257,77 @@ class LiteRTSplitCacheExportableModuleForQwen3_5Prefill(Qwen3_5ExportableMixin, 
 class LiteRTSplitCacheExportableModuleForQwen3_5Generate(Qwen3_5ExportableMixin, split_cache_module.LiteRTSplitCacheExportableModuleForDecoderOnlyLMGenerate):
     def get_sample_inputs(self, model_config: Any, **kwargs: Any) -> Dict[str, Any]:
         return self._update_sample_masks(super().get_sample_inputs(model_config, **kwargs))
+
+
+class LiteRTExportableModuleForQwen3_5VLPrefill(
+    LiteRTExportableModuleForQwen3_5PrefillExternalEmbedder
+):
+  """Multimodal prefill: external embeddings plus M-RoPE positions.
+
+  `mrope_pos` int32 [3, T] holds the (t, h, w) RoPE positions; `input_pos`
+  keeps indexing the caches. They diverge after an image.
+  """
+
+  # pylint: disable=arguments-renamed
+  def forward(  # pyrefly: ignore[bad-override]
+      self, embeddings, mrope_pos, input_pos, kv_cache, mask
+  ):
+    inputs = self.adapt_inputs(
+        None,
+        embeddings,
+        input_pos,
+        kv_cache,
+        mask,
+        use_bool_mask=self.export_config.extra_kwargs.get(
+            "use_bool_mask", False
+        ),
+    )
+    inputs |= self.attention_kwargs()
+    output = self.model(**inputs, mrope_positions=mrope_pos.unsqueeze(1))
+    return {"kv_cache": output.past_key_values}
+
+  def _get_input(
+      self, batch_size, prefill_length, prefill_length_dim, model_config
+  ):
+    inputs, dynamic_shapes = super()._get_input(
+        batch_size, prefill_length, prefill_length_dim, model_config
+    )
+    inputs["mrope_pos"] = torch.zeros((3, prefill_length), dtype=torch.int32)
+    if prefill_length_dim:
+      dynamic_shapes["mrope_pos"] = {1: prefill_length_dim}
+    return inputs, dynamic_shapes
+
+
+class LiteRTExportableModuleForQwen3_5VLGenerate(
+    LiteRTExportableModuleForQwen3_5GenerateExternalEmbedder
+):
+  """Multimodal decode: external embeddings plus M-RoPE positions."""
+
+  # pylint: disable=arguments-renamed
+  def forward(  # pyrefly: ignore[bad-override]
+      self, embeddings, mrope_pos, input_pos, kv_cache, mask
+  ):
+    inputs = self.adapt_inputs(
+        None,
+        embeddings,
+        input_pos,
+        kv_cache,
+        mask,
+        use_bool_mask=self.export_config.extra_kwargs.get(
+            "use_bool_mask", False
+        ),
+    )
+    inputs |= self.attention_kwargs()
+    output = self.model(**inputs, mrope_positions=mrope_pos.unsqueeze(1))
+    return {"kv_cache": output.past_key_values, "logits": output.logits}
+
+  def _get_input(
+      self, batch_size, decode_length, decode_length_dim, model_config
+  ):
+    inputs, dynamic_shapes = super()._get_input(
+        batch_size, decode_length, decode_length_dim, model_config
+    )
+    inputs["mrope_pos"] = torch.zeros((3, decode_length), dtype=torch.int32)
+    if decode_length_dim:
+      dynamic_shapes["mrope_pos"] = None
+    return inputs, dynamic_shapes

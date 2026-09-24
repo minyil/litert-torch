@@ -36,7 +36,7 @@ def get_metadata_builder(
     return gemma4_metadata_builder.build_llm_metadata
   elif model_config.model_type == 'gemma4_unified':
     return gemma4_metadata_builder.build_llm_metadata
-  elif model_config.model_type == 'qwen3_vl':
+  elif model_config.model_type in ('qwen3_vl', 'qwen3_5'):
     return qwen3_vl_metadata_builder.build_llm_metadata
   else:
     return (
