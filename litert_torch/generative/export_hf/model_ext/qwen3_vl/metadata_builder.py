@@ -31,6 +31,7 @@ from litert_lm_builder.runtime.proto import llm_model_type_pb2
 _VISION_START = '<|vision_start|>'
 _IMAGE_PAD = '<|image_pad|>'
 _VISION_END = '<|vision_end|>'
+_IM_END = '<|im_end|>'
 
 
 def build_llm_metadata(
@@ -70,4 +71,8 @@ def build_llm_metadata(
   llm_metadata.llm_model_type.CopyFrom(
       llm_model_type_pb2.LlmModelType(generic_model=generic)
   )
+  # The chat turn ends with <|im_end|>; generation_config only lists
+  # <|endoftext|>, which the model emits a few tokens later.
+  if not any(t.token_str == _IM_END for t in llm_metadata.stop_tokens):
+    llm_metadata.stop_tokens.add(token_str=_IM_END)
   return llm_metadata
