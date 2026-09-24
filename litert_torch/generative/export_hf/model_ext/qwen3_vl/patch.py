@@ -44,7 +44,7 @@ def _select_recomposition_frequencies(self, freq):
   assignment in HF, but lowers to SELECT instead of scatter ops.
   """
   half = freq.shape[-1]
-  idx = torch.arange(half)
+  idx = torch.arange(half, device=freq.device)
   use_h = (idx % 3 == 1) & (idx < 3 * self.mrope_section[1])
   use_w = (idx % 3 == 2) & (idx < 3 * self.mrope_section[2])
   freqs_thw = torch.where(
