@@ -210,7 +210,9 @@ class LiteRTExportableModuleForQwen3VLVisionEncoder(
     )
     ret = {}
     for height, width in sizes:
-      self._grid(height, width)
+      # Precompute the grid constants before tracing, so that forward() only
+      # reads cached tensors and they are captured as constants.
+      self._constants(*self._grid(height, width))
       ret[f'vision_{height}x{width}'] = (
           {'images': torch.zeros((1, height, width, 3), dtype=torch.float32)},
           {},
