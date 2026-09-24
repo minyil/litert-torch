@@ -111,7 +111,8 @@ class LiteRTExportableModuleForQwen3VLVisionEncoder(
     if key in self._grid_constants:
       return self._grid_constants[key]
     visual = self.visual
-    grid_thw = torch.tensor([[1, grid_h, grid_w]])
+    device = visual.pos_embed.weight.device
+    grid_thw = torch.tensor([[1, grid_h, grid_w]], device=device)
     interp_indices, interp_weights = (
         vision_utils.get_vision_interpolation_indices_and_weights(
             grid_thw,
@@ -132,7 +133,9 @@ class LiteRTExportableModuleForQwen3VLVisionEncoder(
 
     merged_h, merged_w = grid_h // self.merge_size, grid_w // self.merge_size
     hh, ww = torch.meshgrid(
-        torch.arange(merged_h), torch.arange(merged_w), indexing='ij'
+        torch.arange(merged_h, device=device),
+        torch.arange(merged_w, device=device),
+        indexing='ij',
     )
     mrope_offsets = torch.stack(
         [torch.zeros_like(hh), hh, ww], dim=-1
