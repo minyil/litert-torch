@@ -29,6 +29,8 @@ from litert_torch.generative.export_hf.model_ext.parakeet import parakeet_ctc as
 from litert_torch.generative.export_hf.model_ext.parakeet import parakeet_tdt as parakeet_tdt_lib
 from litert_torch.generative.export_hf.model_ext.qwen3 import qwen3_asr as qwen3_asr_lib
 from litert_torch.generative.export_hf.model_ext.qwen3_5 import exportable_module as qwen3_5_exportable
+from litert_torch.generative.export_hf.model_ext.qwen3_vl import exportable_module as qwen3_vl_exportable
+from litert_torch.generative.export_hf.model_ext.qwen3_vl import vision_exportable as qwen3_vl_vision_exportable
 from litert_torch.generative.export_hf.model_ext.qwen3_tts import qwen3_tts as qwen3_tts_lib
 from litert_torch.generative.export_hf.model_ext.whisper import whisper as whisper_lib
 import transformers
@@ -88,6 +90,18 @@ def get_prefill_decode_exportables(
           qwen3_5_exportable.LiteRTExportableModuleForQwen3_5Prefill,
           qwen3_5_exportable.LiteRTExportableModuleForQwen3_5Generate,
       )
+  elif model_config.model_type == 'qwen3_vl':
+    assert (
+        not export_config.split_cache
+    ), 'Split cache is not supported for Qwen3-VL.'
+    assert (
+        export_config.externalize_embedder
+    ), 'External embedder is required for Qwen3-VL.'
+    print('Using Qwen3-VL exportables.')
+    return (
+        qwen3_vl_exportable.LiteRTExportableModuleForQwen3VLPrefill,
+        qwen3_vl_exportable.LiteRTExportableModuleForQwen3VLGenerate,
+    )
   else:
     pass
   return None
@@ -125,6 +139,12 @@ def get_vision_exportables(
     return (
         lfm2_vl_vision_exportable.LiteRTExportableModuleForLFM2VisionEncoder,
         lfm2_vl_vision_exportable.LiteRTExportableModuleForLFM2VisionAdapter,
+        None,
+    )
+  elif model_config.model_type == 'qwen3_vl':
+    return (
+        qwen3_vl_vision_exportable.LiteRTExportableModuleForQwen3VLVisionEncoder,
+        None,
         None,
     )
   else:
