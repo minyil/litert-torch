@@ -50,8 +50,9 @@ def build_llm_metadata(
           'qwen3_vl_image_sizes', vision_exportable._DEFAULT_IMAGE_SIZES  # pylint: disable=protected-access
       )
   )
-  # TODO: Let the runtime pick among several encoder signatures; for now the
-  # first size is the preprocessing target.
+  # The runtime resizes each image to the candidate size that fits it best and
+  # runs the matching `vision_{H}x{W}` encoder signature. The first size is
+  # also the default target for runtimes without candidate size support.
   height, width = sizes[0]
 
   placeholder = re.escape(_VISION_START + _IMAGE_PAD + _VISION_END)
@@ -63,6 +64,9 @@ def build_llm_metadata(
   generic.image_suffix = _VISION_END
   generic.image_tensor_height = height
   generic.image_tensor_width = width
+  if len(sizes) > 1:
+    for size_height, size_width in sizes:
+      generic.image_tensor_sizes.add(height=size_height, width=size_width)
   llm_metadata.llm_model_type.CopyFrom(
       llm_model_type_pb2.LlmModelType(generic_model=generic)
   )
