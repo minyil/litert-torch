@@ -794,7 +794,26 @@ class Qwen3_5StaticForCausalLM(nn.Module):
   def from_hf_model(cls, hf_model: Any) -> "Qwen3_5StaticForCausalLM":
     config = copy.deepcopy(_unwrap_config(hf_model.config))
     static_model = cls(config)
-    static_model.load_state_dict(hf_model.state_dict(), strict=False)
+    state_dict = hf_model.state_dict()
+    if any(k.startswith("model.language_model.") for k in state_dict):
+      # Multimodal checkpoint (Qwen3_5ForConditionalGeneration): keep the text
+      # decoder and lm_head, drop the vision tower.
+      state_dict = {
+          ("model." + k[len("model.language_model."):]
+           if k.startswith("model.language_model.") else k): v
+          for k, v in state_dict.items()
+          if not k.startswith("model.visual.")
+      }
+      missing, _ = static_model.load_state_dict(state_dict, strict=False)
+      if "lm_head.weight" in missing and getattr(
+          hf_model.config, "tie_word_embeddings", False
+      ):
+        static_model.lm_head.weight = static_model.model.embed_tokens.weight
+        missing = [k for k in missing if k != "lm_head.weight"]
+      if missing:
+        raise ValueError(f"Weights missing from the checkpoint: {missing[:8]}")
+    else:
+      static_model.load_state_dict(state_dict, strict=False)
     return static_model
 
   def get_input_embeddings(self) -> nn.Module:

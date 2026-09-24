@@ -259,8 +259,24 @@ class LiteRTSplitCacheExportableModuleForQwen3_5Generate(Qwen3_5ExportableMixin,
         return self._update_sample_masks(super().get_sample_inputs(model_config, **kwargs))
 
 
+class _Qwen3_5VLFullModelMixin:
+  """Builds the static decoder from the full multimodal checkpoint.
+
+  The export pipeline hands in the text sub-model, which lacks lm_head; the
+  full Qwen3_5ForConditionalGeneration in source_model_artifacts has it.
+  """
+
+  def __init__(self, model, export_config, source_model_artifacts=None):
+    if source_model_artifacts is not None and hasattr(
+        source_model_artifacts.model, "lm_head"
+    ):
+      model = source_model_artifacts.model
+    super().__init__(model, export_config, source_model_artifacts)  # pytype: disable=wrong-arg-count
+
+
 class LiteRTExportableModuleForQwen3_5VLPrefill(
-    LiteRTExportableModuleForQwen3_5PrefillExternalEmbedder
+    _Qwen3_5VLFullModelMixin,
+    LiteRTExportableModuleForQwen3_5PrefillExternalEmbedder,
 ):
   """Multimodal prefill: external embeddings plus M-RoPE positions.
 
@@ -299,7 +315,8 @@ class LiteRTExportableModuleForQwen3_5VLPrefill(
 
 
 class LiteRTExportableModuleForQwen3_5VLGenerate(
-    LiteRTExportableModuleForQwen3_5GenerateExternalEmbedder
+    _Qwen3_5VLFullModelMixin,
+    LiteRTExportableModuleForQwen3_5GenerateExternalEmbedder,
 ):
   """Multimodal decode: external embeddings plus M-RoPE positions."""
 
