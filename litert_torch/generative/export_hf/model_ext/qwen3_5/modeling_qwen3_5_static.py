@@ -804,7 +804,11 @@ class Qwen3_5StaticForCausalLM(nn.Module):
           for k, v in state_dict.items()
           if not k.startswith("model.visual.")
       }
-      missing, _ = static_model.load_state_dict(state_dict, strict=False)
+      # assign=True shares the checkpoint tensors instead of copying them,
+      # so the static decoder costs no extra memory.
+      missing, _ = static_model.load_state_dict(
+          state_dict, strict=False, assign=True
+      )
       if "lm_head.weight" in missing and getattr(
           hf_model.config, "tie_word_embeddings", False
       ):

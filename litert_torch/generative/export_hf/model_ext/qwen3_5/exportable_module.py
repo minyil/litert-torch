@@ -270,7 +270,12 @@ class _Qwen3_5VLFullModelMixin:
     if source_model_artifacts is not None and hasattr(
         source_model_artifacts.model, "lm_head"
     ):
-      model = source_model_artifacts.model
+      # Prefill and decode share one static copy of the 4B decoder; building
+      # one per module would need another full fp32 copy of the weights.
+      model = getattr(source_model_artifacts, "_qwen3_5_static_wrapper", None)
+      if model is None:
+        model = Qwen3_5StaticModelHFWrapper(source_model_artifacts.model)
+        source_model_artifacts._qwen3_5_static_wrapper = model  # pylint: disable=protected-access
     super().__init__(model, export_config, source_model_artifacts)  # pytype: disable=wrong-arg-count
 
 
